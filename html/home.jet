@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/notie/4.3.1/notie.css" integrity="sha512-7DgarsuahzxiOonlZeYgjXuPFVEDIylPzzlmANJdccCIO0H7ofXKbAKf0FWCkh8NkCFswe3Hpj6HegSTYH6SJQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        .chatbox{
+            outline: 1px solid silver;
+            min-height: 160px;
+            padding: 0.5em;
+        }
+    </style>
+
+</head>
+<body>
+    <div class="container">
+        <div class="row">
+            <div class="col">
+                <h1 class="mt-3">This is home page</h1>
+                <p><a href="https://www.github.com">Go To Github page</a></p>
+                <hr>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-8" >
+                <h3>Chat</h3>
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" name="username" id="username" class="form-control" autocomplete="off">
+                </div>
+
+                <div class="form-group">
+                    <label for="message">Message</label>
+                    <input type="text" name="username" id="message" class="form-control" autocomplete="off">
+                </div>
+
+                <a href="javascript:void(0)" class="btn btn-outline-secondary mt-2 mb-2" id="sendBtn" >Send Message</a>
+
+                <input type="hidden" name="action" id="action">
+
+                <div id="status" class="mt-3 float-end">
+
+                </div>
+
+                <div id="output" class="chatbox"></div>
+
+            </div>
+            <div class="col-md-4">
+                <h3>Who's Online</h3>
+                <ul id="usersList">
+                    
+                </ul>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/notie/4.3.1/notie.min.js" integrity="sha512-NHRCwRf2LnVSlLDejCA9oS3fG3/FLSQIPCjAWl3M7tVi5wszwr6FxkjotWnQDXLE+aLKcxRrzFDNEgXj9nvkPw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <script src="/static/reconnecting-websocket.min.js"></script>
+
+    <script>
+        let socket = null;
+            let Output = document.getElementById("output")
+            let UserField = document.getElementById("username")
+            let MessageField = document.getElementById("message")
+
+            window.onbeforeunload = function () {
+                console.log("leaving")
+                let js = {};
+    
+                js["action"] = "left";
+    
+                socket.send(JSON.stringify(js))
+            }
+        
+        document.addEventListener("DOMContentLoaded", function() {
+            socket = new ReconnectingWebSocket("ws://127.0.0.1:8080/ws",null,{debug:true, reconectInterval: 3000})
+            
+            const Offline = `<span class="badge bg-danger">Disconnected</span>`
+            const Online = `<span class="badge bg-success">Connected</span>`
+
+            let statusDiv = document.getElementById("status")
+
+            socket.onopen = () => {
+                console.log("Successfuly connected")
+                statusDiv.innerHTML = Online
+            } 
+
+            socket.onclose = () => {
+                console.log("Connection Close")
+                statusDiv.innerHTML = Offline
+            }
+
+            socket.onerror = err => {
+                console.log("There was an error:::",err)
+                statusDiv.innerHTML = Offline
+            }
+
+            socket.onmessage = msg => {
+                let data = JSON.parse(msg.data)
+
+                console.log("action is::",data.action)
+
+                switch(data.action){
+                    case "list_users":
+                    let ul = document.getElementById("usersList")
+
+                    while(ul.firstChild) ul.removeChild(ul.firstChild)
+
+                    console.log(data.usersConnected)
+                    if(data.usersConnected.length > 0){
+                        data.usersConnected.forEach(function(item) {
+                            let li = document.createElement("li")
+                            li.appendChild(document.createTextNode(item))
+                            ul.appendChild(li);
+                        })
+                    }
+
+                    break
+
+                    case "broadcast":
+                    console.log(data)
+                    Output.innerHTML = Output.innerHTML + data.message + "<br>";
+                    break
+
+                }
+
+            }
+            UserField.addEventListener("change",function () {
+                let jsonData = {};
+                jsonData["action"] = "username"
+                jsonData["username"] = this.value;
+                socket.send(JSON.stringify(jsonData))
+            })
+
+            MessageField.addEventListener("keydown", function(event){
+                if (event.code === "Enter") {
+                    if(!socket) {
+                        console.log("no connection")
+                        return false
+                    }
+
+                    if ((UserField.value === "") || (MessageField.value === "")){
+                    errorMessage("All Fields Must be filled")
+                    return false
+                    } else {
+                    sendMessage()
+                    }
+                    event.preventDefault()
+                    event.stopPropagation();
+                }
+            })
+
+            document.getElementById("sendBtn").addEventListener("click" , function() {
+                if ((UserField.value === "") || (MessageField.value === "")){
+                    errorMessage("All Fields Must be filled")
+                    return false
+                } else {
+                    sendMessage()
+                }
+            })
+
+            function sendMessage() {
+                let jd = {}
+                jd["action"] = "broadcast"
+                jd["username"] = UserField.value
+                jd["message"] = MessageField.value
+                socket.send(JSON.stringify(jd))
+                MessageField.value = "";
+            }
+
+            function errorMessage(msg) {
+                notie.alert({
+                    type: 'error',
+                    text: msg
+
+                })
+            } 
+        })
+
+
+
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+
+</body>
+</html>
